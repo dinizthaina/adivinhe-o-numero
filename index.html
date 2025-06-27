@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Adivinhe o Número</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #004eb2;
+      margin: 0;
+      padding: 20px;
+      color: white;
+      text-align: center;
+    }
+    h1 { margin-bottom: 30px; }
+    #setup, #jogo {
+      max-width: 500px;
+      width: 100%;
+      margin: 0 auto 20px auto;
+      padding: 20px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 12px;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 12px;
+      margin-bottom: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background-color: #4e8cff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+    button:hover {
+      background-color: #3a70d6;
+    }
+    #dica.maior {
+      color: #ffdd57;
+      font-weight: bold;
+    }
+    #dica.menor {
+      color: #ff6b6b;
+      font-weight: bold;
+    }
+    #ranking {
+      max-width: 500px;
+      margin: 30px auto;
+      padding: 20px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 12px;
+    }
+    ol {
+      list-style: none;
+      padding-left: 0;
+    }
+    li {
+      padding: 8px 10px;
+      border-radius: 4px;
+    }
+    li:nth-child(even) {
+      background-color: #2466cc;
+    }
+    li span {
+      font-weight: bold;
+    }
+    li:first-child::before { content: "🥇 "; }
+    li:nth-child(2)::before { content: "🥈 "; }
+    li:nth-child(3)::before { content: "🥉 "; }
+
+    #explicacoes {
+      max-width: 500px;
+      margin: 0 auto 40px auto;
+      background: rgba(255, 255, 255, 0.15);
+      padding: 15px 20px;
+      border-radius: 10px;
+      text-align: left;
+      color: #e0e0e0;
+      font-size: 14px;
+      line-height: 1.5;
+      box-shadow: 0 0 8px rgba(0,0,0,0.2);
+    }
+    #explicacoes h3 {
+      margin-top: 0;
+      color: #fff;
+      font-weight: bold;
+      text-align: center;
+      margin-bottom: 15px;
+    }
+
+    @media (max-width: 600px) {
+      h1 { font-size: 24px; }
+      input, button { font-size: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Adivinhe o Número</h1>
+
+  <div id="setup">
+    <input type="text" id="nome" placeholder="Seu nome" />
+    <input type="text" id="turma" placeholder="Sua turma" />
+    <button onclick="iniciarJogo()">Iniciar Jogo</button>
+  </div>
+
+  <div id="jogo" style="display:none">
+    <p id="info"></p>
+    <input type="number" id="palpite" min="1" max="100" autocomplete="off" />
+    <button onclick="tentarChute()">Chutar</button>
+    <p id="dica"></p>
+    <p id="tentativasRestantes"></p>
+    <p id="chutesAnteriores"></p>
+    <p id="probabilidades"></p>
+  </div>
+
+  <div id="explicacoes">
+    <h3>O que significa cada porcentagem?</h3>
+    <p><strong>Probabilidade geral até agora:</strong> A chance que você tem de já ter acertado considerando quantas tentativas você já fez.</p>
+    <p><strong>Probabilidade de acerto na próxima tentativa:</strong> A chance que você tem de acertar no próximo palpite, pensando nos números que ainda podem ser o certo.</p>
+    <p><strong>Probabilidade baseada na proximidade do último chute:</strong> O quão perto seu último palpite está do número certo — quanto mais perto, maior essa chance.</p>
+  </div>
+
+  <div id="ranking">
+    <h3>Ranking:</h3>
+    <ol id="listaRanking"></ol>
+  </div>
+
+<script>
+  const N = 100; // total de números possíveis
+  let numeroSecreto = null;
+  let tentativas;
+  let nomeJogador;
+  let turmaJogador;
+  let ranking = [];
+  let chutes = [];
+  let min, max;
+
+  function iniciarJogo() {
+    numeroSecreto = Math.floor(Math.random() * N) + 1;
+    tentativas = 10;
+    nomeJogador = document.getElementById("nome").value.trim();
+    turmaJogador = document.getElementById("turma").value.trim();
+    chutes = [];
+    min = 1;
+    max = 100;
+
+    if (!nomeJogador || !turmaJogador) {
+      alert("Preencha seu nome e a turma.");
+      return;
+    }
+
+    document.getElementById("setup").style.display = "none";
+    document.getElementById("jogo").style.display = "block";
+    atualizarInterface();
+
+    const palpiteInput = document.getElementById("palpite");
+    palpiteInput.value = "";
+    palpiteInput.focus();
+
+    palpiteInput.removeEventListener("keydown", enviarComEnter);
+    palpiteInput.addEventListener("keydown", enviarComEnter);
+  }
+
+  function enviarComEnter(e) {
+    if (e.key === "Enter") {
+      tentarChute();
+    }
+  }
+
+  function tentarChute() {
+    const palpite = parseInt(document.getElementById("palpite").value);
+    if (palpite < 1 || palpite > 100 || isNaN(palpite)) {
+      alert("Digite um número entre 1 e 100.");
+      return;
+    }
+
+    if (chutes.includes(palpite)) {
+      alert("Você já tentou esse número. Tente outro.");
+      return;
+    }
+
+    chutes.push(palpite);
+    tentativas--;
+
+    if (palpite === numeroSecreto) {
+      const tentativasFeitas = 10 - tentativas;
+      const chanceGeral = probabilidadeGeral(tentativasFeitas);
+      alert(`Parabéns, ${nomeJogador}! Você acertou!\nChance geral de acerto até agora: ${chanceGeral.toFixed(2)}%`);
+      ranking.push({ nome: nomeJogador, turma: turmaJogador, chance: chanceGeral });
+      ranking.sort((a,b) => a.chance - b.chance);
+      atualizarRanking();
+      reiniciar();
+    } else {
+      if (palpite < numeroSecreto) {
+        min = Math.max(min, palpite + 1);
+        document.getElementById("dica").textContent = "Tente um número maior.";
+        document.getElementById("dica").className = "maior";
+      } else {
+        max = Math.min(max, palpite - 1);
+        document.getElementById("dica").textContent = "Tente um número menor.";
+        document.getElementById("dica").className = "menor";
+      }
+
+      if (tentativas > 0) {
+        atualizarInterface();
+      } else {
+        alert(`Fim de jogo. O número era ${numeroSecreto}`);
+        reiniciar();
+      }
+    }
+  }
+
+  // Probabilidade geral: 0% antes de chutar, 1% na primeira tentativa, etc
+  function probabilidadeGeral(tentativasFeitas) {
+    if(tentativasFeitas === 0) return 0;
+    return (tentativasFeitas / N) * 100;
+  }
+
+  // Probabilidade da tentativa atual (exata chance na tentativa k)
+  function probabilidadeTentativa(k) {
+    return 100 / (N - (k - 1));
+  }
+
+  // Probabilidade pela proximidade (heurística)
+  function probabilidadeProximidade(secret, chute) {
+    const distancia = Math.abs(secret - chute);
+    if(distancia === 0) return 100;
+    return 100 / distancia;
+  }
+
+  function atualizarInterface() {
+    const tentativasFeitas = 10 - tentativas;
+    const chanceGeral = probabilidadeGeral(tentativasFeitas);
+    const chanceTentativaAtual = probabilidadeTentativa(tentativasFeitas + 1);
+    const ultimoChute = chutes[chutes.length -1];
+    const chanceProximidade = ultimoChute !== undefined ? probabilidadeProximidade(numeroSecreto, ultimoChute) : 0;
+
+    document.getElementById("info").textContent = `Tentativas restantes: ${tentativas}`;
+    document.getElementById("chutesAnteriores").textContent = `Números já chutados: ${chutes.join(", ")}`;
+
+    document.getElementById("probabilidades").innerHTML =
+      `<strong>Probabilidade geral até agora:</strong> ${chanceGeral.toFixed(2)}%<br>` +
+      `<strong>Probabilidade de acerto na próxima tentativa:</strong> ${chanceTentativaAtual.toFixed(2)}%<br>` +
+      `<strong>Probabilidade baseada na proximidade do último chute:</strong> ${chanceProximidade.toFixed(2)}%`;
+
+    const palpiteInput = document.getElementById("palpite");
+    palpiteInput.value = "";
+    palpiteInput.focus();
+  }
+
+  function atualizarRanking() {
+    const lista = document.getElementById("listaRanking");
+    lista.innerHTML = "";
+    ranking.forEach((p) => {
+      const item = document.createElement("li");
+      item.innerHTML = `<span>${p.nome}</span> (${p.turma}) - Acertou com chance geral de ${p.chance.toFixed(2)}%`;
+      lista.appendChild(item);
+    });
+  }
+
+  function reiniciar() {
+    numeroSecreto = null;
+    document.getElementById("setup").style.display = "block";
+    document.getElementById("jogo").style.display = "none";
+    document.getElementById("nome").value = "";
+    document.getElementById("turma").value = "";
+    document.getElementById("dica").textContent = "";
+    document.getElementById("dica").className = "";
+    document.getElementById("chutesAnteriores").textContent = "";
+    document.getElementById("probabilidades").textContent = "";
+    document.getElementById("info").textContent = "";
+    document.getElementById("palpite").value = "";
+  }
+</script>
+</body>
+</html>
